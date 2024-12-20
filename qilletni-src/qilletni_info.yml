@@ -1,0 +1,5 @@
+name: metadata
+version: 1.0.0
+author: Adam Yarris
+#dependencies:
+#  - 1.0.0:postgres
