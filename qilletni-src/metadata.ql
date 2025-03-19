@@ -28,6 +28,15 @@ entity Metadata {
             connection.execute("CREATE TABLE IF NOT EXISTS example_table (id SERIAL PRIMARY KEY, name VARCHAR(255));")
             
             connection.execute("CREATE TABLE tags (id VARCHAR(64) NOT NULL, tag VARCHAR(255) NOT NULL, PRIMARY KEY (id, tag));")
+            connection.execute("CREATE TABLE descriptions (id VARCHAR(64) NOT NULL, description VARCHAR(2056) NOT NULL, PRIMARY KEY id);")
+            connection.execute("CREATE TABLE rates (id VARCHAR(64) NOT NULL, rate DOUBLE PRECISION NOT NULL, PRIMARY KEY id);")
+            
+            // Custom field types:
+            //  0: string
+            //  1: int
+            //  2: double
+            //  3: boolean
+            connection.execute("CREATE TABLE custom_fields (id VARCHAR(64) NOT NULL, field_name VARCHAR(64) NOT NULL, type INT NOT NULL, value VARCHAR(2056) NOT NULL, PRIMARY KEY (id, field_name));")
         }
         
         return new Metadata(connection)
@@ -134,19 +143,19 @@ entity Metadata {
         // are added in, and proper preparation of the statement still occurs.
         PreparedStatement statement = _connection.prepareStatement("SELECT id, tag FROM tags WHERE id in (%s)".format([_constructPlaceholders(allIds.size())]), allIds)
         Result result = _connection.fetchAll(statement)
-        
+
         string[] tags = []
-        
-        if (result.isSuccess()) {
-            any[] rows = result.getValue()
-            
-            for (row : rows) {
-                tags.add(row[1])
-            }
-        } else {
-            print("Failed to fetch tags: %s".format([result.message]))
+
+        if (!result.isSuccess()) {
+            return tags
         }
-        
+
+        any[] rows = result.getValue()
+
+        for (row : rows) {
+            tags.add(row[1])
+        }
+
         return tags
     }
     
@@ -161,15 +170,34 @@ entity Metadata {
         return getDescription(metaObject, true)
     }
     
+    fun _constructDescriptionPlaceholder(count) {
+        string[] placeholders = []
+        for (i..count) {
+            placeholders.add("(SELECT description FROM descriptions WHERE id = ? LIMIT 1)")
+        }
+        
+        return placeholders.join(", ")
+    }
+    
     /**
      * Get the description for the given object. If no description is found, an empty string is returned.
      *
      * @param metaObject The object to get the description for
      * @param[@type boolean] inherit Whether to inherit from parent objects
-     * @returns[@type string] The description for the object
+     * @returns[@type string] The description for the object. If no description is found, an empty string is returned
      */
     fun getDescription(metaObject, inherit) {
-        // TODO: Implement
+        string[] allIds = _getHierarchyIds(metaObject, inherit)
+        
+        // Tries the first ID, if nothing is found, go to the next, etc.
+        PreparedStatement statement = _connection.prepareStatement("SELECT COALESCE(%s) AS description".format([_constructDescriptionPlaceholder(allIds.size())]), allIds)
+        Result result = _connection.fetchOne(statement)
+        
+        if (!result.isSuccess()) {
+            return ""
+        }
+        
+        return result.getValue()[0]
     }
     
     /**
@@ -277,7 +305,12 @@ entity Metadata {
      * @param[@type boolean] inherit Whether to inherit from parent objects
      */
     fun removeTag(metaObject, tag, inherit) {
-        // TODO: Implement
+        string[] allIds = _getHierarchyIds(metaObject, inherit)
+        string[] placeholders = allIds
+        placeholders.add(tag)
+        
+        PreparedStatement statement = _connection.prepareStatement("DELETE FROM tags WHERE id IN (%s) AND tag = ?;".format([_constructPlaceholders(allIds.size())]), placeholders)
+        _connection.update(statement)
     }
     
     /**
@@ -287,7 +320,8 @@ entity Metadata {
      * @param[@type string] description The description to set
      */
     fun setDescription(metaObject, description) {
-        
+        PreparedStatement statement = _connection.prepareStatement("INSERT INTO descriptions (id, description) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description;", [metaObject.getId(), description])
+        _connection.update(statement)
     }
     
     /**
@@ -297,19 +331,31 @@ entity Metadata {
      * @param[@type double] rating The rating to set
      */
     fun setRating(metaObject, rating) {
-        
+        PreparedStatement statement = _connection.prepareStatement("INSERT INTO rates (id, rate) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET rate = EXCLUDED.rate;", [metaObject.getId(), rating])
+        _connection.update(statement)
     }
     
     /**
      * Set the custom field for the given object. Custom field allowed types:
-     * string, int, double, boolean, list (of the previous types)
+     * string, int, double, boolean
      *
      * @param metaObject The object to set the custom field for
      * @param field The field to set
      * @param value The value to set
      */
     fun setCustomField(metaObject, field, value) {
+        int type = 0 // string
         
+        if (value is int) {
+            type = 1
+        } else if (value is double) {
+            type = 2
+        } else if (value is boolean) {
+            type = 3
+        }
+        
+        PreparedStatement statement = _connection.prepareStatement("INSERT INTO custom_fields (id, field_name, type, value) VALUES (?, ?, ?, ?) ON CONFLICT (id, field_name) DO UPDATE SET type = EXCLUDED.type, value = EXCLUDED.value;", [metaObject.getId(), field, type, string(value)])
+        _connection.update(statement)
     }
     
     /**
