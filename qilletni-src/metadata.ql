@@ -249,7 +249,7 @@ entity Metadata {
      * Get all custom fields for the given object, inheriting from parent objects.
      *
      * @param metaObject The object to get the custom fields for
-     * @returns[@type map] A map of all custom fields for the object, with the field name as the key and the value as the value
+     * @returns[@type core.Map] A map of all custom fields for the object, with the field name as the key and the value as the value
      */
     fun getAllCustomFields(metaObject) {
         return getAllCustomFields(metaObject, true)
@@ -260,7 +260,7 @@ entity Metadata {
      *
      * @param metaObject The object to get the custom fields for
      * @param[@type boolean] inherit Whether to inherit from parent objects
-     * @returns[@type map] A map of all custom fields for the object, with the field name as the key and the value as the value
+     * @returns[@type core.Map] A map of all custom fields for the object, with the field name as the key and the value as the value
      */
     fun getAllCustomFields(metaObject, inherit) {
         
